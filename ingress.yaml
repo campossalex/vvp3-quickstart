@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vvp-ingress
+  namespace: vvp-system
+  annotations:
+    nginx.ingress.kubernetes.io/upstream-vhost: "EC2_INSTANCE_DNS"
+    nginx.ingress.kubernetes.io/proxy-redirect-from: "http://api-gateway.vvp-system.svc.cluster.local:8080/"
+    nginx.ingress.kubernetes.io/proxy-redirect-to: "EC2_INSTANCE_DNS/"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: EC2_INSTANCE_DNS
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-gateway
+                port:
+                  number: 8080
