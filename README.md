@@ -1,5 +1,6 @@
 ## Infrastructure
 Spin up a m5.4xlarge ec2 instance. This instance has 16 cores and 64 Gb memory. If you need more resources to run Flink jobs, use a m5.8xlarge (32 cores / 128 Gb memory).  
+Any Amazong Linux 2023 AMI should be fine to run this quickstart.  
 
 ## Minikube, Minio, Mysql and VVP 3.1.0 installation process  
 
@@ -32,18 +33,14 @@ sudo service docker start
 sudo minikube start --memory=40G --cpus=12 --force
 
 # Create ns:
-
 kubectl create ns vvp-system
 kubectl create ns vvp-deploy
 
-
 # Set registry secrets:
-
 kubectl -n vvp-system create secret docker-registry ververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
 kubectl -n vvp-deploy create secret docker-registry vervververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
 
 # Mysql password secrete
-
 kubectl -n vvp-system create secret generic mysql-secret   --from-literal=mysql-root-password='admin123'
 
 # Deploy mysql
@@ -53,17 +50,16 @@ kubectl apply -f values-mysql.yaml
 helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://charts.helm.sh/stable --values values-minio.yaml
 
 # Deploy the VVP 3 helm
-
 helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp.yaml
 
-# Wait the pods to start to the get token
-
+# Wait for the pods to start to get token
 kubectl logs vvp-appmanager-0 -n vvp-system
 
 # Ask for a license to Ververica sendinf the TOKEN obtained before.  
-One the license is received, create a license-vvp.yaml with the license content.  
+One the license is received, create a license-vvp.yaml with the license content.
 
-# Upgrade the VVP 3 helm with the license file
+One you get the license file, add the value to the values-vvp-with-license.yaml. Ensure the indentation is correct and at the right level (whitspaces).  
 
-helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp.yaml -f license-vvp.yaml
+# Upgrade the VVP 3 helm with the values-vvp-with-license.yaml file
+helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-with-license.yaml -f license-vvp.yaml
 ```
