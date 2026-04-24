@@ -7,7 +7,7 @@ Any Amazong Linux 2023 AMI should be fine to run this quickstart.
 Connect to the instance's command line (ssh) to run the following commands as `sudo su`:  
 
 ```
-# Additional packaes
+# Additional packages
 sudo yum install -y jq
 sudo yum install -y nginx
 
@@ -24,7 +24,7 @@ curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scrip
 chmod 700 get_helm.sh
 sudo HELM_INSTALL_DIR=/bin ./get_helm.sh
 
-# Install docker
+# Install Docker
 sudo yum update -y
 sudo yum install -y docker
 sudo service docker start
