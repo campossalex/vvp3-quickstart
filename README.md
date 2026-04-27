@@ -41,7 +41,7 @@ kubectl create ns vvp-deploy
 
 # Set registry secrets:
 kubectl -n vvp-system create secret docker-registry ververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
-kubectl -n vvp-deploy create secret docker-registry vervververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
+kubectl -n vvp-deploy create secret docker-registry ververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
 
 # Mysql password secrete
 kubectl -n vvp-system create secret generic mysql-secret   --from-literal=mysql-root-password='admin123'
