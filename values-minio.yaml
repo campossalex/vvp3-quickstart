@@ -1,5 +1,15 @@
 accessKey: admin
 secretKey: password
+
+# Official minio/minio and minio/mc images are no longer published; use community builds
+image:
+  repository: docker.io/pgsty/minio
+  tag: RELEASE.2026-08-04T00-00-00Z
+
+mcImage:
+  repository: docker.io/pgsty/mc
+  tag: RELEASE.2026-09-16T00-00-00Z
+
 defaultBucket:
   enabled: true
   name: vvp-system
