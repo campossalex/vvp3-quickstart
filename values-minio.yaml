@@ -1,7 +1,6 @@
-accessKey: admin
-secretKey: password
-
-# Official minio/minio and minio/mc images are no longer published; use community builds
+# MinIO chart >= 5.x (https://charts.min.io/)
+# Upstream images on quay.io / Docker Hub are no longer publicly pullable (401),
+# so use the pgsty community fork — same layout (docker-entrypoint.sh, /usr/bin/mc).
 image:
   repository: docker.io/pgsty/minio
   tag: RELEASE.2026-08-04T00-00-00Z
@@ -10,14 +9,27 @@ mcImage:
   repository: docker.io/pgsty/mc
   tag: RELEASE.2026-09-16T00-00-00Z
 
-defaultBucket:
-  enabled: true
-  name: vvp-system
+mode: standalone
+replicas: 1
+
+rootUser: admin
+rootPassword: password
+
+buckets:
+  - name: vvp
+    policy: none
+
+  - name: warehouse
+    policy: none
+
+environment:
+  MINIO_API_CORS_ALLOW_ORIGIN: "*"
+  CONSOLE_SECURE_HEADERS: "off"
 
 resources:
   requests:
-    memory: 256Mi
+    memory: 512Mi
     cpu: 250m
   limits:
-    memory: 256Mi
+    memory: 1Gi
     cpu: 1000m

@@ -3,17 +3,18 @@ Two runbooks are available, depending on the VVP metadata store: [MySQL](#miniku
 ## Infrastructure
 Spin up a m5.4xlarge ec2 instance. This instance has 16 cores and 64 Gb memory. If you need more resources to run Flink jobs, use a m5.8xlarge (32 cores / 128 Gb memory).  
 Any Amazon Linux 2023 AMI should be fine to run this quickstart.  
+Use an x86_64 (amd64) AMI and instance type: the VVP 3 images are published for amd64 only, so Graviton (arm64) instances and Apple Silicon laptops won't run them. VVP 3.1.0 requests about 9 CPUs and 24 GiB of memory, which is why minikube gets `--memory=40G --cpus=12` below.  
 
 ## Minikube, Minio, Mysql and VVP 3.1.0 installation process  
 
 Connect to the instance's command line (ssh) to run the following commands as `sudo su`:  
 
 ```
-# Additional packaes
+# Additional packages
 sudo yum install -y jq
 sudo yum install -y nginx
 
-# Install kubctl
+# Install kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
 sudo install -o root -g root -m 0755 kubectl /bin/kubectl
 
@@ -21,7 +22,7 @@ sudo install -o root -g root -m 0755 kubectl /bin/kubectl
 curl -LO https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64
 sudo install minikube-linux-amd64 /bin/minikube
 
-# Install helm chart
+# Install helm
 curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
 chmod 700 get_helm.sh
 sudo HELM_INSTALL_DIR=/bin ./get_helm.sh
@@ -32,6 +33,8 @@ sudo yum install -y docker
 sudo service docker start
 
 # start minikube
+# VVP 3.x supports Kubernetes 1.24-1.34. The latest minikube may start a newer version
+# (tested OK with v1.37); add --kubernetes-version=v1.34.0 to stay in the supported range.
 sudo minikube start --memory=40G --cpus=12 --force
 
 # start nginx
@@ -48,31 +51,48 @@ kubectl create ns vvp-deploy
 kubectl -n vvp-system create secret docker-registry ververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
 kubectl -n vvp-deploy create secret docker-registry ververica-registry --docker-username=<username> --docker-password=<password> --docker-server=registry.ververica.cloud
 
-# Mysql password secrete
+# Mysql password secret
 
 kubectl -n vvp-system create secret generic mysql-secret   --from-literal=mysql-root-password='admin123'
 
 # Deploy mysql
 kubectl apply -f values-mysql.yaml
 
-# Deploy minio (s3). values-minio.yaml overrides the images with pgsty/minio and pgsty/mc,
+# Deploy minio (s3) with the official MinIO chart; it creates the vvp and warehouse buckets.
+# values-minio.yaml overrides the images with pgsty/minio and pgsty/mc,
 # since the official MinIO images are no longer available
-helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://charts.helm.sh/stable --values values-minio.yaml
+helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://charts.min.io/ --version 5.4.0 --values values-minio.yaml
 
 # Deploy the VVP 3 helm
 
 helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-mysql.yaml
 
-# Wait the pods to start to the get token
+# Wait for the pods to start. Until a license is installed, vvp-appmanager-0 and vvp-gateway-0
+# restart / crash-loop with "No license found or misconfigured"; this is expected.
+kubectl -n vvp-system get pods
 
-kubectl logs vvp-appmanager-0 -n vvp-system
+# Get the installation token
+kubectl logs vvp-appmanager-0 -n vvp-system | grep -A2 "installation token"
+```
 
-# Ask for a license to Ververica sendinf the TOKEN obtained before.  
-One the license is received, create a license-vvp.yaml with the license content.  
+Ask Ververica for a license, sending the installation token obtained above. Once the license (a JSON document) is received, create a `license-vvp.yaml` next to the values files, with the license JSON on a single line under `global.vvp.license.data`:
 
+```yaml
+global:
+  vvp:
+    license:
+      data: {"kind":"License","apiVersion":"v1","metadata":{...},"spec":{...}}
+```
+
+```
 # Upgrade the VVP 3 helm with the license file
-
 helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-mysql.yaml -f license-vvp.yaml
+
+# vvp-appmanager and vvp-gateway only read the license at startup: restart them
+kubectl -n vvp-system delete pod vvp-appmanager-0 vvp-gateway-0
+
+# After a few minutes, all pods in vvp-system should be Running and READY
+kubectl -n vvp-system get pods
 ```
 
 ## Minikube, Minio, PostgreSQL and VVP 3.1.0 installation process
@@ -105,6 +125,8 @@ sudo yum install -y docker
 sudo service docker start
 
 # Start minikube
+# VVP 3.x supports Kubernetes 1.24-1.34. The latest minikube may start a newer version
+# (tested OK with v1.37); add --kubernetes-version=v1.34.0 to stay in the supported range.
 sudo minikube start --memory=40G --cpus=12 --force
 
 # start nginx
@@ -129,29 +151,44 @@ kubectl -n vvp-system create secret generic postgres-secret --from-literal=postg
 kubectl apply -f values-postgres.yaml
 kubectl -n vvp-system rollout status deploy/postgres
 
-# Deploy minio (s3). values-minio.yaml overrides the images with pgsty/minio and pgsty/mc,
+# Deploy minio (s3) with the official MinIO chart; it creates the vvp and warehouse buckets.
+# values-minio.yaml overrides the images with pgsty/minio and pgsty/mc,
 # since the official MinIO images are no longer available
-helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://charts.helm.sh/stable --values values-minio.yaml
+helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://charts.min.io/ --version 5.4.0 --values values-minio.yaml
 
 # Deploy the VVP 3 helm
 
 helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-postgres.yaml
 
-# Wait for the pods to start to get the token
-
-kubectl logs vvp-appmanager-0 -n vvp-system
-
 # Check that VVP created its databases (vvp-appmanager, vvp-meta, accesscontrol, ...)
-
 kubectl -n vvp-system exec deploy/postgres -- psql -U vvp -c '\l'
+
+# Wait for the pods to start. Until a license is installed, vvp-appmanager-0 and vvp-gateway-0
+# restart / crash-loop with "No license found or misconfigured"; this is expected.
+kubectl -n vvp-system get pods
+
+# Get the installation token
+kubectl logs vvp-appmanager-0 -n vvp-system | grep -A2 "installation token"
 ```
 
-Ask Ververica for a license, sending the TOKEN obtained above. Once the license is received, create a `license-vvp.yaml` with the license content.
+Ask Ververica for a license, sending the installation token obtained above. Once the license (a JSON document) is received, create a `license-vvp.yaml` next to the values files, with the license JSON on a single line under `global.vvp.license.data`:
+
+```yaml
+global:
+  vvp:
+    license:
+      data: {"kind":"License","apiVersion":"v1","metadata":{...},"spec":{...}}
+```
 
 ```
 # Upgrade the VVP 3 helm with the license file
-
 helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-postgres.yaml -f license-vvp.yaml
+
+# vvp-appmanager and vvp-gateway only read the license at startup: restart them
+kubectl -n vvp-system delete pod vvp-appmanager-0 vvp-gateway-0
+
+# After a few minutes, all pods in vvp-system should be Running and READY
+kubectl -n vvp-system get pods
 ```
 
 ## Expose VVP 3 Web Console   
@@ -164,7 +201,16 @@ minikube addons enable ingress
 ```
 
 ### Edit ingress.yaml
-Replace "EC2_INSTANCE_DNS" for the actual ec2 instance dns (you can get this in the AWS Console, in the EC2 section, selecting the virtual machine you are using to deploy VVP 3.  
+Replace "EC2_INSTANCE_DNS" for the actual ec2 instance dns (you can get this in the AWS Console, in the EC2 section, selecting the virtual machine you are using to deploy VVP 3), or let the instance metadata fill it in:  
+```
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
+sed -i "s/EC2_INSTANCE_DNS/$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/public-hostname)/g" ingress.yaml
+```
+
+Wait for the ingress controller before applying the ingress:
+```
+kubectl -n ingress-nginx wait --for=condition=Ready pod -l app.kubernetes.io/component=controller --timeout=5m
+```
 
 ### Apply ingress  
 ```
@@ -208,3 +254,10 @@ nginx -t && systemctl reload nginx
 ```
 kubectl port-forward svc/api-gateway 8080:8080 -n vvp-system --address 0.0.0.0
 ```
+
+The port-forward stops when the terminal closes. To keep it running in the background (it still stops on reboot):
+```
+nohup kubectl port-forward svc/api-gateway 8080:8080 -n vvp-system --address 0.0.0.0 > /var/log/vvp-port-forward.log 2>&1 &
+```
+
+Then open `http://<EC2_INSTANCE_DNS>/` in a browser. Port 80 must be allowed in the instance's security group.

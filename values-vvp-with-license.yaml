@@ -24,7 +24,6 @@ global:
 
   rbac:
     additionalNamespaces:
-      - vvp-system
       - vvp-deploy
 
   vvp:
