@@ -1,11 +1,11 @@
-Two runbooks are available, depending on the VVP metadata store: [MySQL](#minikube-minio-mysql-and-vvp-310-installation-process) or [PostgreSQL](#minikube-minio-postgresql-and-vvp-310-installation-process).
+Two runbooks are available, depending on the VVP metadata store: [MySQL](#minikube-minio-mysql-and-vvp-311-installation-process) or [PostgreSQL](#minikube-minio-postgresql-and-vvp-313-installation-process).
 
 ## Infrastructure
 Spin up a m5.4xlarge ec2 instance. This instance has 16 cores and 64 Gb memory. If you need more resources to run Flink jobs, use a m5.8xlarge (32 cores / 128 Gb memory).  
 Any Amazon Linux 2023 AMI should be fine to run this quickstart.  
-Use an x86_64 (amd64) AMI and instance type: the VVP 3 images are published for amd64 only, so Graviton (arm64) instances and Apple Silicon laptops won't run them. VVP 3.1.0 requests about 9 CPUs and 24 GiB of memory, which is why minikube gets `--memory=40G --cpus=12` below.  
+Use an x86_64 (amd64) AMI and instance type: the VVP 3 images are published for amd64 only, so Graviton (arm64) instances and Apple Silicon laptops won't run them. VVP 3.1 requests about 9 CPUs and 24 GiB of memory, which is why minikube gets `--memory=40G --cpus=12` below.  
 
-## Minikube, Minio, Mysql and VVP 3.1.0 installation process  
+## Minikube, Minio, Mysql and VVP 3.1.1 installation process  
 
 Connect to the instance's command line (ssh) to run the following commands as `sudo su`:  
 
@@ -65,10 +65,11 @@ helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://c
 
 # Deploy the VVP 3 helm
 
-helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-mysql.yaml
+helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.1 --namespace vvp-system --values values-vvp-mysql.yaml
 
 # Wait for the pods to start. Until a license is installed, vvp-appmanager-0 and vvp-gateway-0
 # restart / crash-loop with "No license found or misconfigured"; this is expected.
+until kubectl logs vvp-appmanager-0 -n vvp-system 2>/dev/null | grep -q "installation token"; do sleep 10; done
 kubectl -n vvp-system get pods
 
 # Get the installation token
@@ -85,8 +86,14 @@ global:
 ```
 
 ```
+# Chart 3.1.1 manages the vvp-license-fingerprint Secret that VVP already created at startup
+# (same content: the installation token). Let Helm adopt it, otherwise the upgrade fails with
+# "exists and cannot be imported into the current release".
+kubectl -n vvp-system label secret vvp-license-fingerprint app.kubernetes.io/managed-by=Helm
+kubectl -n vvp-system annotate secret vvp-license-fingerprint meta.helm.sh/release-name=ververica-platform meta.helm.sh/release-namespace=vvp-system
+
 # Upgrade the VVP 3 helm with the license file
-helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-mysql.yaml -f license-vvp.yaml
+helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.1 --namespace vvp-system --values values-vvp-mysql.yaml -f license-vvp.yaml
 
 # vvp-appmanager and vvp-gateway only read the license at startup: restart them
 kubectl -n vvp-system delete pod vvp-appmanager-0 vvp-gateway-0
@@ -95,9 +102,11 @@ kubectl -n vvp-system delete pod vvp-appmanager-0 vvp-gateway-0
 kubectl -n vvp-system get pods
 ```
 
-## Minikube, Minio, PostgreSQL and VVP 3.1.0 installation process
+## Minikube, Minio, PostgreSQL and VVP 3.1.3 installation process
 
 VVP 3.1+ supports PostgreSQL 15+ as metadata store ([docs](https://docs.ververica.com/docs/vvp3/user-guides/admin-operator-guide/postgresql-metadata-store)). VVP creates its databases on startup (`createIfMissing: true`).
+
+This runbook uses VVP chart **3.1.3**: chart 3.1.0 ignores `provider: postgresql` and still connects with the MariaDB driver (services crash-loop with `Read timed out`), PostgreSQL support starts in 3.1.1, and `passwordSecret` (used in `values-vvp-postgres.yaml`) requires 3.1.3.
 
 Connect to the instance's command line (ssh) to run the following commands as `sudo su`:
 
@@ -158,14 +167,15 @@ helm --namespace "vvp-system" upgrade --install "minio" "minio" --repo https://c
 
 # Deploy the VVP 3 helm
 
-helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-postgres.yaml
+helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.3 --namespace vvp-system --values values-vvp-postgres.yaml
+
+# Wait for the pods to start (the first image pull takes a few minutes). Until a license is installed,
+# vvp-appmanager-0 and vvp-gateway-0 restart / crash-loop with "No license found or misconfigured"; this is expected.
+until kubectl logs vvp-appmanager-0 -n vvp-system 2>/dev/null | grep -q "installation token"; do sleep 10; done
+kubectl -n vvp-system get pods
 
 # Check that VVP created its databases (vvp-appmanager, vvp-meta, accesscontrol, ...)
 kubectl -n vvp-system exec deploy/postgres -- psql -U vvp -c '\l'
-
-# Wait for the pods to start. Until a license is installed, vvp-appmanager-0 and vvp-gateway-0
-# restart / crash-loop with "No license found or misconfigured"; this is expected.
-kubectl -n vvp-system get pods
 
 # Get the installation token
 kubectl logs vvp-appmanager-0 -n vvp-system | grep -A2 "installation token"
@@ -181,8 +191,14 @@ global:
 ```
 
 ```
+# Chart 3.1.3 manages the vvp-license-fingerprint Secret that VVP already created at startup
+# (same content: the installation token). Let Helm adopt it, otherwise the upgrade fails with
+# "exists and cannot be imported into the current release".
+kubectl -n vvp-system label secret vvp-license-fingerprint app.kubernetes.io/managed-by=Helm
+kubectl -n vvp-system annotate secret vvp-license-fingerprint meta.helm.sh/release-name=ververica-platform meta.helm.sh/release-namespace=vvp-system
+
 # Upgrade the VVP 3 helm with the license file
-helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.0 --namespace vvp-system --values values-vvp-postgres.yaml -f license-vvp.yaml
+helm upgrade --install ververica-platform oci://registry.ververica.cloud/platform-charts/ververica-platform --version 3.1.3 --namespace vvp-system --values values-vvp-postgres.yaml -f license-vvp.yaml
 
 # vvp-appmanager and vvp-gateway only read the license at startup: restart them
 kubectl -n vvp-system delete pod vvp-appmanager-0 vvp-gateway-0
@@ -213,8 +229,9 @@ kubectl -n ingress-nginx wait --for=condition=Ready pod -l app.kubernetes.io/com
 ```
 
 ### Apply ingress  
+The ingress admission webhook can take a few more seconds after the controller is Ready, so retry until the apply succeeds:
 ```
-kubectl apply -f ingress.yaml
+until kubectl apply -f ingress.yaml; do sleep 5; done
 ```
 
 ### Configure nginx
